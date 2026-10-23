@@ -214,8 +214,8 @@ function edBadge(article){
 }
 function lawSourceNotice(){
  const official='<a href="https://pravo.gov.ru/" target="_blank" rel="noopener noreferrer">Официальный портал правовой информации ↗</a>';
- const current='<a href="https://base.garant.ru/12125268/" target="_blank" rel="noopener noreferrer">Действующая редакция ↗</a>';
- const future='<a href="https://base.garant.ru/414652940/" target="_blank" rel="noopener noreferrer">Будущий закон № 246-ФЗ ↗</a>';
+ const current='<a href="https://ivo.garant.ru/document/redirect/12125268/305" target="_blank" rel="noopener noreferrer">Действующая редакция ↗</a>';
+ const future='<a href="https://www.consultant.ru/document/cons_doc_LAW_540333/" target="_blank" rel="noopener noreferrer">Будущий закон № 246-ФЗ ↗</a>';
  const info='<p style="margin:8px 0"><b>Статус на 23.10.2026:</b> справочная система ГАРАНТ указывает редакцию, действующую с 01.09.2026 по 28.02.2027. Закон № 246-ФЗ от 26.07.2026 вступает в силу 01.03.2027. Проверено наличие редакций, <b>но не совпадение текста отдельных статей</b> с локальной копией.</p>';
  const links='<p>'+official+' · '+current+' · '+future+'</p>';
  if(!tkCorpus)return '<div class="notice" role="status"><b>Текст ТК РФ не загружен.</b> Внутренний справочник не заменяет проверку действующей нормы.'+info+links+'</div>';
