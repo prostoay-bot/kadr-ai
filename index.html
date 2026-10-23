@@ -392,5 +392,46 @@ function ocrBanner(){return ocrFlag?'<div class="notice"><b>Текст полу�
 RULES.push(['Штраф или удержание с работника',/(?:работник|сотрудник)[^.]{0,80}?(?:уплачива|выплачива|оплачива)[^.]{0,40}?(?:штраф|неустойк)|(?:штраф|неустойк)[а-я]*[^.]{0,80}?(?:с\s+работника|удержан|из\s+заработн)/i,'192','high','Перечень дисциплинарных взысканий закрытый (замечание, выговор, увольнение); денежные штрафы работнику не предусмотрены (ст. 192), удержания допустимы только в случаях ст. 137.','Исключить условие.']);
 {const _rbt=reviewByType;reviewByType=function(t,s){const r=_rbt(t,s);return r.filter((c,i)=>r.findIndex(x=>x.title===c.title&&x.article===c.article)===i).map((c,i)=>({...c,id:i}))}}
 
+/* ===== QA fixes 2026-10-23: rule precision, deadlines, document UX ===== */
+const QA_NUM_WORDS={один:1,одна:1,два:2,две:2,три:3,четыре:4,пять:5,шесть:6,семь:7,восемь:8,девять:9,десять:10,двенадцать:12};
+const _qaFacts=contractFacts;
+contractFacts=function(s){
+ const f=_qaFacts(s);
+ // Previous implementation treated 14 days as 0.466 months, producing past deadlines.
+ let m=/(?:испытательн[а-я]*\s+(?:срок|период)|срок\s+испытания|испытание)[^.\n]{0,65}?((?:\d+\s*(?:\(\s*[а-яё]+\s*\))?|один|одна|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|двенадцать))\s*(месяц[а-я]*|мес\.?|недел[а-я]*|дн(?:ей|я|и|ь)?|календарн[а-я]*\s+дн[а-я]*)/i.exec(s);
+ if(m){let num=parseInt(m[1],10);if(!Number.isFinite(num))num=QA_NUM_WORDS[m[1].trim().toLowerCase()];const unit=m[2].toLowerCase();if(num>0){if(/месяц|мес/.test(unit)){f.probM=num;f.probDays=num*30;f.probUnit='month'}else{f.probM=null;f.probDays=/недел/.test(unit)?num*7:num;f.probUnit=/недел/.test(unit)?'week':'day'}}}
+ return f;
+};
+const _qaReview=localContractReview;
+localContractReview=function(s){
+ let ch=_qaReview(s).map(c=>({...c}));const f=lastFacts;
+ // Reference to art.74 explicitly makes unilateral changes potentially legal; do not flag automatically.
+ if(/(?:ст(?:атья|атье|\.)?\s*74|стать[ея]\s+74)\s*ТК\s*РФ/i.test(s))ch=ch.filter(c=>c.title!=='Одностороннее изменение условий договора');
+ // Shifts with summarized accounting cannot be multiplied by a standard 5-day schedule.
+ if(/сменн[а-я]*\s+график|график\s+сменност/i.test(s)&&/суммированн[а-я]*\s+уч[её]т/i.test(s))ch=ch.filter(c=>c.title!=='Рабочая неделя свыше 40 часов');
+ // "Не реже двух раз" is not the same as "раз в месяц".
+ if(/не\s+реже\s+(?:двух|2|два)\s+раз(?:а)?\s+в\s+месяц/i.test(s))ch=ch.filter(c=>c.title!=='Выплата зарплаты реже двух раз в месяц');
+ // Match '21 календарный день' as well as plural day forms.
+ const vac=/(?:ежегодн[а-я]*\s+(?:основн[а-я]*\s+)?оплачиваем[а-я]*\s+отпуск|продолжительност[ьи]\s+отпуска)[\s\S]{0,100}?(\d{1,2})\s+календарн[а-я]*\s+д(?:ень|ня|ней)/i.exec(s);
+ if(vac&&+vac[1]<28&&!ch.some(c=>c.article==='115'&&/меньше 28/i.test(c.title)))ch.push({title:'Продолжительность основного отпуска меньше 28 дней',article:'115',severity:'high',kind:'risk',found:true,excerpt:contractExcerpt(s,vac),problem:'Указанная продолжительность основного отпуска меньше общего минимума 28 календарных дней (ст. 115); уточните вид отпуска и категорию работника.',hint:'Проверьте и исправьте продолжительность основного отпуска.'});
+ if(f.probM>3&&!ch.some(c=>c.article==='70'&&/Испытание свыше трёх/i.test(c.title))){ch.push({title:'Испытание свыше трёх месяцев',article:'70',kind:'risk',severity:'medium',found:true,excerpt:contractExcerpt(s,/(?:испытательн[а-я]*\s+(?:срок|период)|срок\s+испытания|испытание)/i.exec(s)),problem:'Для большинства работников максимум три месяца, для предусмотренных законом руководителей — до шести месяцев (ст. 70).',hint:'Уточните должность и сократите испытание до допустимого срока.'})}
+ return ch.map((c,i)=>({...c,id:i}));
+};
+const _qaRender=render;
+render=function(){_qaRender();const sel=document.getElementById('docType');if(!sel)return;const apply=()=>{const name=sel.options[sel.selectedIndex]?.textContent||'документ';const zone=document.getElementById('dropZone');if(!zone)return;const heading=zone.previousElementSibling?.querySelector('h3');if(heading)heading.textContent='Загрузить документ: '+name;const prompt=zone.querySelector('h3');if(prompt)prompt.textContent='Перетащите файл: '+name.toLowerCase();const fld=document.getElementById('contractFile');if(fld)fld.setAttribute('aria-label','Выбрать файл: '+name);};sel.addEventListener('change',apply);apply()};
+// The final multi-document reviewer adds its own checks after localContractReview.
+// Filter only explicitly disproved flags at the public review boundary.
+const _qaByType=reviewByType;
+reviewByType=function(t,s){let items=_qaByType(t,s);if(t!=='contract')return items;
+ const suppress=new Set();
+ if(/не\s+реже\s+(?:двух|2|два)\s+раз(?:а)?\s+в\s+месяц/i.test(s))suppress.add('Выплата зарплаты реже двух раз в месяц');
+ if(/(?:ст(?:атья|атье|\.)?\s*74|стать[ея]\s+74)\s*ТК\s*РФ/i.test(s))suppress.add('Одностороннее изменение условий договора');
+ if(/сменн[а-я]*\s+график|график\s+сменност/i.test(s)&&/суммированн[а-я]*\s+уч[её]т/i.test(s))suppress.add('Рабочая неделя свыше 40 часов');
+ items=items.filter(x=>!suppress.has(x.title));
+ const vacation=/(?:ежегодн[а-я]*\s+(?:основн[а-я]*\s+)?оплачиваем[а-я]*\s+отпуск|продолжительност[ьи]\s+отпуска)[\s\S]{0,100}?(\d{1,2})\s+календарн[а-я]*\s+д(?:ень|ня|ней)/i.exec(s);
+ if(vacation&&+vacation[1]<28&&!items.some(x=>x.article==='115'&&/меньше 28/i.test(x.title))){items.push({title:'Продолжительность основного отпуска меньше 28 дней',article:'115',severity:'high',kind:'risk',status:'risk',conf:'средняя',found:true,excerpt:contractExcerpt(s,vacation),problem:'Основной ежегодный оплачиваемый отпуск по общему правилу не может быть меньше 28 календарных дней (ст. 115).',hint:'Проверьте вид отпуска и исправьте продолжительность.'})}
+ return items.map((x,i)=>({...x,id:i}));
+};
+
 render();autoLoadCorpus();
 </script></body></html>
