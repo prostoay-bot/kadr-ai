@@ -140,25 +140,25 @@ async function getOcrWorker(){await loadLib('ocr');if(!window.Tesseract)throw Er
 async function ocrImage(file){fileStatus('Загружаю модуль распознавания фотографий…');const worker=await getOcrWorker();try{fileStatus('Распознаю фотографию…');const result=await worker.recognize(file);ocrConfs.push(result.data.confidence);return result.data.text||''}finally{await worker.terminate()}}
 async function parsePdf(file){fileStatus('Читаю PDF…');await loadLib('pdf');if(!window.pdfjsLib)throw Error('PDF-модуль не загрузился');pdfjsLib.GlobalWorkerOptions.workerSrc=(libSrc.pdf==='vendor/pdfjs/pdf.mjs')?new URL('vendor/pdfjs/pdf.worker.mjs',location.href).href:'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';const data=new Uint8Array(await readAsArrayBuffer(file));const pdf=await pdfjsLib.getDocument({data,useSystemFonts:true}).promise;
  if(pdf.numPages>20)throw Error('PDF слишком длинный ('+pdf.numPages+' стр.). В этой версии максимум 20 страниц.');
- let parts=[],scanPages=[];
+ let parts=[],scanPages=[],mixedImagePages=[];
  for(let p=1;p<=pdf.numPages;p++){
   fileStatus('Читаю PDF: страница '+p+' из '+pdf.numPages+'…');
   const page=await pdf.getPage(p),content=await page.getTextContent();
   const text=(content.items||[]).map(item=>item.str||'').join(' ');
   // A short text layer alone is NOT proof that this page is a scan.
   // Cover pages and one-paragraph annexes would otherwise waste OCR credits/time.
-  let hasRaster=false;
-  if(text.trim().length<65){
-    const ops=await page.getOperatorList();
-    const imageOps=['paintImageXObject','paintInlineImageXObject','paintImageMaskXObject','paintJpegXObject','paintImageXObjectRepeat','paintInlineImageXObjectGroup','paintImageMaskXObjectRepeat'];
-    const codes=imageOps.map(k=>pdfjsLib.OPS?.[k]).filter(v=>v!==undefined);
-    hasRaster=ops.fnArray.some(code=>codes.includes(code));
-  }
-  if(hasRaster)scanPages.push({page,index:p});
+  // Inspect image operators even on a page with a text layer.
+  // A scanned page may contain both OCR text and an image; never silently assume completeness.
+  const ops=await page.getOperatorList();
+  const imageOps=['paintImageXObject','paintInlineImageXObject','paintImageMaskXObject','paintJpegXObject','paintImageXObjectRepeat','paintInlineImageXObjectGroup','paintImageMaskXObjectRepeat'];
+  const codes=imageOps.map(k=>pdfjsLib.OPS?.[k]).filter(v=>v!==undefined);
+  const hasRaster=ops.fnArray.some(code=>codes.includes(code));
+  if(hasRaster&&text.trim().length<65)scanPages.push({page,index:p});
+  else if(hasRaster)mixedImagePages.push(p);
   parts.push(text);
  }
  if(scanPages.length){if(scanPages.length>5)throw Error('В PDF '+scanPages.length+' сканированных страниц. OCR поддерживает до 5 страниц за одну загрузку. Разделите документ или используйте PDF с текстовым слоем.');fileStatus('PDF содержит сканы. Начинаю распознавание '+scanPages.length+' страниц…');const worker=await getOcrWorker();try{for(let i=0;i<scanPages.length;i++){const {page,index}=scanPages[i];fileStatus('OCR скана PDF: страница '+index+' из '+pdf.numPages+'…');const viewport=page.getViewport({scale:1.7}),canvas=document.createElement('canvas');canvas.width=Math.floor(viewport.width);canvas.height=Math.floor(viewport.height);const ctx=canvas.getContext('2d');if(!ctx)throw Error('Не удалось создать поверхность для OCR');await page.render({canvasContext:ctx,viewport}).promise;const result=await worker.recognize(canvas);ocrConfs.push(result.data.confidence);parts[index-1]=result.data.text||'';canvas.width=0;canvas.height=0}}finally{await worker.terminate()}}
- return {text:parts.join('\n\n'),method:scanPages.length?'PDF: текстовый слой и OCR':'PDF: извлечение текста',pages:pdf.numPages};}
+ return {text:parts.join('\n\n'),method:scanPages.length?'PDF: текстовый слой и OCR':'PDF: извлечение текста',pages:pdf.numPages,warnings:mixedImagePages.length?['Изображения на страницах '+mixedImagePages.join(', ')+' могут содержать текст, отсутствующий в текстовом слое']:[]};}
 async function parseDocx(file){fileStatus('Читаю документ Word DOCX…');await loadLib('mammoth');if(!window.mammoth)throw Error('Компонент Word недоступен');const r=await mammoth.extractRawText({arrayBuffer:await readAsArrayBuffer(file)});return {text:r.value||'',method:'DOCX: извлечение текста'};}
 let uploadBusy=false;
 async function processContractFile(file){if(!file||uploadBusy)return;const ext=(file.name.split('.').pop()||'').toLowerCase();const valid=['pdf','docx','txt','jpg','jpeg','png','webp','bmp'];if(!valid.includes(ext)){fileStatus('Формат .'+ext+' пока не поддерживается. Подходят PDF, DOCX, JPG, PNG, WebP, BMP, TXT. Для старого .doc сохраните копию в DOCX или PDF.','error');return}
@@ -436,7 +436,7 @@ function docxOmittedSections(buf){
   names.push(new TextDecoder().decode(u.subarray(p+46,p+46+nl)));
   p+=46+nl+xl+cl;
  }
- const kinds=[[/^word\/header\d+\.xml$/i,'верхние колонтитулы'],[/^word\/footer\d+\.xml$/i,'нижние колонтитулы'],[/^word\/footnotes\.xml$/i,'сноски'],[/^word\/endnotes\.xml$/i,'концевые сноски'],[/^word\/comments\.xml$/i,'комментарии'],[/^word\/embeddings\//i,'встроенные объекты']];
+ const kinds=[[/^word\/header\d+\.xml$/i,'верхние колонтитулы'],[/^word\/footer\d+\.xml$/i,'нижние колонтитулы'],[/^word\/footnotes\.xml$/i,'сноски'],[/^word\/endnotes\.xml$/i,'концевые сноски'],[/^word\/comments\.xml$/i,'комментарии'],[/^word\/embeddings\//i,'встроенные объекты'],[/^word\/media\/[^/]+$/i,'изображения (возможен текст внутри картинок)']];
  return kinds.filter(([re])=>names.some(name=>re.test(name))).map(([,label])=>label);
 }
 parseDocx=async function(file){fileStatus('Читаю документ Word DOCX…');const buf=await readAsArrayBuffer(file);let text,method='DOCX: встроенное извлечение текста';try{text=await docxBuiltin(buf)}catch(e1){try{await loadLib('mammoth');if(!window.mammoth)throw 0;text=(await mammoth.extractRawText({arrayBuffer:buf})).value||'';method='DOCX: извлечение текста (Mammoth)'}catch(e2){throw e1}}return{text,method,warnings:docxOmittedSections(buf)}};
