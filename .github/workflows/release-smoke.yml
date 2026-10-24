@@ -29,6 +29,10 @@ jobs:
           python3 -m http.server 8765 --bind 127.0.0.1 >/tmp/kadr-http.log 2>&1 &
           sleep 2
           curl -f http://127.0.0.1:8765/
+      - name: Check JavaScript syntax and OCR regression tests
+        run: |
+          node --test tests/ocr-quality.test.cjs
+          node --check tests/release-smoke.cjs
       - name: Run release smoke tests
         env:
           KADR_URL: http://127.0.0.1:8765/
