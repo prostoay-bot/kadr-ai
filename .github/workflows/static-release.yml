@@ -7,6 +7,7 @@ on:
       - data/tk-rf.json
       - vendor/pdfjs/**
       - tests/static-release.test.cjs
+      - tests/law-search.test.cjs
       - .github/workflows/static-release.yml
   pull_request:
 permissions:
@@ -20,4 +21,4 @@ jobs:
         with:
           node-version: '22'
       - name: Run code and document integrity tests
-        run: node --test tests/static-release.test.cjs tests/release-safety.test.cjs tests/ocr-quality.test.cjs
+        run: node --test tests/static-release.test.cjs tests/release-safety.test.cjs tests/ocr-quality.test.cjs tests/law-search.test.cjs
