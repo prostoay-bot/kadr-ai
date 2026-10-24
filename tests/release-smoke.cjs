@@ -25,7 +25,7 @@ const fixture='ТРУДОВОЙ ДОГОВОР. ООО Пример. Вымыш�
   const doc=new Document({sections:[{children:[new Paragraph(fixture)]}]});
   const buffer=await Packer.toBuffer(doc);
   await page.locator('#contractFile').setInputFiles({name:'fixture.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer});
-  await page.waitForFunction(()=>document.querySelector('#fileResult')?.textContent?.includes('DOCX')||document.querySelector('#fileResult')?.textContent?.includes('Не удалось'),{timeout:20000});
+  await page.waitForFunction(()=>{const txt=document.querySelector('#contractText')?.value||'';const state=document.querySelector('#fileResult')?.textContent||'';return (txt.includes('Вымышленный работник') && state.includes('✓')) || state.includes('Не удалось') || state.includes('часть документа')},{timeout:20000});
   assert.match(await page.locator('#contractText').inputValue(),/Вымышленный работник/);
   assert.doesNotMatch(await page.locator('#fileResult').innerText(),/Не удалось/);
  });
