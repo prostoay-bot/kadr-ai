@@ -446,7 +446,7 @@ function reviewPd(s){let ch=reqList(s,[['Цели обработки',/цел[ь
 const REVIEWERS={addendum:s=>localAddendumReview(s),o_hire:reviewHire,o_transfer:reviewTransfer,o_dismiss:reviewDismiss,o_vac:reviewVac,l_pvtr:reviewPvtr,l_pay:reviewPay,l_pd:reviewPd};
 function reviewByType(t,s){s=s.replace(/ё/g,'е').replace(/Ё/g,'Е');lastFacts={};const ev=document.getElementById('eventDate')?.value;ctxEvent=ev?new Date(ev):null;let r;if(t==='contract'||!REVIEWERS[t]){r=contractReview(s);const f=lastFacts,d=docFacts(s),h=/с\s*(\d{1,2}[:.]\d{2})\s*(?:до|по)\s*(\d{1,2}[:.]\d{2})/i.exec(s);contractRef={...d,prob:f.probDays,end:f.end,start:f.start||d.start,indef:f.indef,term:f.term,hrs:h&&[h[1],h[2]]}}else r=REVIEWERS[t](s);
  if(t==='contract'){
-  const vacationValues=[...s.matchAll(/(?:ежегодн[а-я]*\\s+(?:основн[а-я]*\\s+)?оплачиваем[а-я]*\\s+отпуск|продолжительност[ьи]\\s+отпуска)[^.\\n]{0,100}?(\\d{1,2})\\s+календарн[а-я]*\\s+дн/gi)].map(x=>Number(x[1]));
+  const vacationValues=[...s.matchAll(/(?:ежегодн[а-я]*\\s+(?:основн[а-я]*\\s+)?оплачиваем[а-я]*\\s+отпуск|продолжительност[ьи]\\s+отпуска)[^.\\n]{0,100}?(\\d{1,2})\\s+календарн[а-я]*\\s+(?:дн(?:я|ей)?|день)\\b/gi)].map(x=>Number(x[1]));
   if(vacationValues.some(n=>n<28)&&!r.some(c=>/отпуска меньше 28/.test(c.title)))r.push(mf('violation','Продолжительность основного отпуска меньше 28 дней','115','Общий минимум основного ежегодного оплачиваемого отпуска — 28 календарных дней.','Исправить длительность, проверить особые категории.',{cf:'высокая'}));
   if(new Set(vacationValues).size>1)r.push(mf('clarify','Противоречивые сроки ежегодного отпуска','115','В документе указано несколько разных длительностей основного отпуска.','Сверить все пункты договора и приложения.',{cf:'высокая'}));
  }
