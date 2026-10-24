@@ -89,6 +89,32 @@ const fixture='ТРУДОВОЙ ДОГОВОР. ООО Пример. Вымыш�
   const result=await page.evaluate(()=>reviewByType('o_hire','Приказ о приеме № 5. Принять специалиста по кадрам с 02.11.2026.'));
   assert.ok(!result.some(x=>x.title==='Должность'&&x.status==='missing'));
  });
+
+ await check('Regression: lawful negations do not trigger fines or politics flags',async()=>{
+  const result=await page.evaluate(()=>{
+   nav('audit');
+   const pvtr=reviewByType('l_pvtr','Правила внутреннего трудового распорядка. Штрафы за опоздания к работникам не применяются.');
+   const pay=reviewByType('l_pay','Положение об оплате труда. Штрафы с работников не взимаются.');
+   const pd=reviewByType('l_pd','Положение о персональных данных. Работодатель не собирает сведения о политических взглядах работников.');
+   return {pvtr:pvtr.filter(x=>x.status==='violation'&&/Штраф/.test(x.title)),pay:pay.filter(x=>x.status==='violation'&&/Штраф/.test(x.title)),pd:pd.filter(x=>x.status==='violation'&&/политическ/.test(x.title))};
+  });
+  assert.deepEqual(result,{pvtr:[],pay:[],pd:[]});
+ });
+ await check('Regression: conflicting or short annual leave is flagged',async()=>{
+  const results=await page.evaluate(()=>{
+   nav('audit');
+   return reviewByType('contract','Трудовой договор. Ежегодный основной оплачиваемый отпуск 28 календарных дней. Ежегодный основной оплачиваемый отпуск 21 календарный день.').filter(x=>/отпуска меньше 28|Противоречивые сроки/.test(x.title)).map(x=>x.title);
+  });
+  assert.ok(results.some(x=>/отпуска меньше 28/.test(x)));
+  assert.ok(results.some(x=>/Противоречивые сроки/.test(x)));
+ });
+ await check('Regression: unpaid work beyond 40 weekly hours flagged',async()=>{
+  const result=await page.evaluate(()=>{
+   nav('audit');
+   return reviewByType('contract','Трудовой договор. Работа сверх 40 часов в неделю без доплаты.').filter(x=>/Сверхурочная работа без/.test(x.title)).map(x=>x.status);
+  });
+  assert.ok(result.includes('risk')||result.includes('violation'));
+ });
  await check('No unhandled JS exceptions',async()=>{assert.deepEqual(errors,[])});
  await browser.close();
  console.log('SUMMARY: '+ok+' passed, '+fail+' failed');
