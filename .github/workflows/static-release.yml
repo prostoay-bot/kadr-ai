@@ -1,0 +1,23 @@
+name: Static release gates
+on:
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - data/tk-rf.json
+      - vendor/pdfjs/**
+      - tests/static-release.test.cjs
+      - .github/workflows/static-release.yml
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run code and document integrity tests
+        run: node --test tests/static-release.test.cjs tests/release-safety.test.cjs tests/ocr-quality.test.cjs
