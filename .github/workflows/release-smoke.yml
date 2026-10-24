@@ -1,0 +1,35 @@
+name: KADR AI browser release checks
+on:
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - data/**
+      - vendor/**
+      - tests/release-smoke.cjs
+      - .github/workflows/release-smoke.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test dependencies
+        run: |
+          npm install --no-save playwright@1.56.1 docx@9.5.1 pdf-lib@1.17.1
+          npx playwright install --with-deps chromium
+      - name: Start local web server
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 >/tmp/kadr-http.log 2>&1 &
+          sleep 2
+          curl -f http://127.0.0.1:8765/
+      - name: Run release smoke tests
+        env:
+          KADR_URL: http://127.0.0.1:8765/
+        run: node tests/release-smoke.cjs
