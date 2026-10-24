@@ -62,6 +62,33 @@ const fixture='ТРУДОВОЙ ДОГОВОР. ООО Пример. Вымыш�
   assert.ok(widths.page<=widths.viewport+2,JSON.stringify(widths));
   await page.setViewportSize({width:1280,height:800});
  });
+
+ await check('Company audit: problematic employment contract',async()=>{
+  const result=await page.evaluate(()=>{
+   nav('audit');
+   return reviewByType('contract','Трудовой договор. Место работы Москва. Должность специалист. Оклад 100000 рублей. Дата начала работы 02.11.2026. Ежегодный основной оплачиваемый отпуск 21 календарный день. Заработная плата выплачивается один раз в месяц. Режим работы с 09:00 до 18:00.').map(x=>({title:x.title,status:x.status}));
+  });
+  assert.ok(result.some(x=>/отпуска меньше 28/.test(x.title)));
+  assert.ok(result.some(x=>/зарплат|заработн/i.test(x.title)&&x.status==='risk'));
+  assert.ok(!result.some(x=>/Рабочая неделя свыше 40 часов/.test(x.title)));
+ });
+ await check('Company audit: PVTR illegal first lateness dismissal',async()=>{
+  const result=await page.evaluate(()=>reviewByType('l_pvtr','Правила внутреннего трудового распорядка. Порядок приема и увольнения. Права и обязанности. Режим рабочего времени. Время отдыха. Поощрения. Дисциплинарные взыскания. Работодатель вправе уволить за первое опоздание. За опоздание работник платит штраф.'));
+  assert.ok(result.some(x=>x.title==='Увольнение за первое опоздание'&&x.status==='violation'));
+  assert.ok(result.some(x=>/Штраф/.test(x.title)&&x.status==='violation'));
+ });
+ await check('Company audit: pay regulation and privacy policy',async()=>{
+  const result=await page.evaluate(()=>({
+   pay:reviewByType('l_pay','Положение об оплате труда. Оклад и премирование, доплаты и надбавки. Сверхурочная работа оплачивается в одинарном размере.'),
+   pd:reviewByType('l_pd','Положение о персональных данных. Цель обработки. Доступ и хранение. Передача данных третьим лицам без согласия работника.')
+  }));
+  assert.ok(result.pay.some(x=>/Сверхурочн/.test(x.title)&&x.status==='violation'));
+  assert.ok(result.pd.some(x=>/Передача данных без согласия/.test(x.title)&&x.status==='violation'));
+ });
+ await check('Company audit: staffing specialist detected in hire order',async()=>{
+  const result=await page.evaluate(()=>reviewByType('o_hire','Приказ о приеме № 5. Принять специалиста по кадрам с 02.11.2026.'));
+  assert.ok(!result.some(x=>x.title==='Должность'&&x.status==='missing'));
+ });
  await check('No unhandled JS exceptions',async()=>{assert.deepEqual(errors,[])});
  await browser.close();
  console.log('SUMMARY: '+ok+' passed, '+fail+' failed');
